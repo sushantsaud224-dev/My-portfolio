@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Portfolio Admin | Shekhar Ram Saud</title>
+  <style>
+    :root { color-scheme: dark; --yellow:#ffd21f; --black:#111; --panel:#1d1d1d; --muted:#bbb; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--black); color:white; font:16px/1.5 system-ui,sans-serif; }
+    main { width:min(760px, calc(100% - 32px)); margin:50px auto; }
+    h1 { line-height:1.1; }
+    h1 span { color:var(--yellow); }
+    .panel { padding:24px; border:1px solid #383838; border-radius:18px; background:var(--panel); }
+    label { display:block; margin:15px 0 6px; font-weight:700; }
+    input, textarea, select {
+      width:100%; padding:12px; border:1px solid #444; border-radius:9px;
+      color:white; background:#111; font:inherit;
+    }
+    textarea { min-height:100px; resize:vertical; }
+    button, .back {
+      display:inline-block; margin-top:18px; padding:12px 18px; border:0;
+      border-radius:9px; color:#111; background:var(--yellow); font-weight:800;
+      text-decoration:none; cursor:pointer;
+    }
+    button:disabled { opacity:.55; cursor:wait; }
+    .secondary { color:white; background:#333; }
+    #status { min-height:1.5em; color:var(--yellow); }
+    .hint { color:var(--muted); font-size:.9rem; }
+    [hidden] { display:none !important; }
+  </style>
+</head>
+<body>
+  <main>
+    <a class="back" href="index.html">← View portfolio</a>
+    <h1>Portfolio <span>admin</span></h1>
+    <p class="hint">Sign in to upload workshop photos, videos, and project media.</p>
+
+    <section class="panel" id="loginPanel">
+      <h2>Admin sign in</h2>
+      <form id="loginForm">
+        <label for="email">Email</label>
+        <input id="email" type="email" autocomplete="username" required>
+        <label for="password">Password</label>
+        <input id="password" type="password" autocomplete="current-password" required>
+        <button type="submit">Sign in</button>
+      </form>
+    </section>
+
+    <section class="panel" id="uploadPanel" hidden>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+        <h2>Upload media</h2>
+        <button class="secondary" id="signOut" type="button">Sign out</button>
+      </div>
+      <form id="uploadForm">
+        <label for="title">Title</label>
+        <input id="title" maxlength="120" required placeholder="Example: Student robotics workshop">
+
+        <label for="description">Description</label>
+        <textarea id="description" maxlength="1500" placeholder="Add event or project details"></textarea>
+
+        <label for="category">Type of content</label>
+        <select id="category" required>
+          <option value="workshop">Workshop</option>
+          <option value="principal">Principal’s message</option>
+          <option value="student">Student sharing</option>
+          <option value="exhibition">Exhibition</option>
+          <option value="project">Project or machine</option>
+        </select>
+
+        <label for="school">School or organization</label>
+        <input id="school" maxlength="160" placeholder="Optional">
+
+        <label for="eventDay">Exhibition day</label>
+        <select id="eventDay">
+          <option value="">Not applicable</option>
+          <option value="Day 1">Day 1</option>
+          <option value="Day 2">Day 2</option>
+          <option value="Day 3">Day 3</option>
+          <option value="Day 4">Day 4</option>
+        </select>
+
+        <label for="file">Photo or video</label>
+        <input id="file" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm" required>
+        <p class="hint">Accepted: JPG, PNG, WebP, MP4, WebM. Maximum file size: 100 MB.</p>
+
+        <button id="uploadButton" type="submit">Upload to portfolio</button>
+      </form>
+      <p id="status" role="status" aria-live="polite"></p>
+    </section>
+  </main>
+
+  <script type="module">
+    import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
+
+    const SUPABASE_URL = "YOUR_SUPABASE_PROJECT_URL";
+    const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY";
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const loginPanel = document.querySelector("#loginPanel");
+    const uploadPanel = document.querySelector("#uploadPanel");
+    const status = document.querySelector("#status");
+    const allowedTypes = new Set([
+      "image/jpeg", "image/png", "image/webp", "video/mp4", "video/webm"
+    ]);
+
+    function showSignedIn(isSignedIn) {
+      loginPanel.hidden = isSignedIn;
+      uploadPanel.hidden = !isSignedIn;
+    }
+
+    async function refreshSession() {
+      const { data } = await supabase.auth.getSession();
+      showSignedIn(Boolean(data.session));
+    }
+
+    document.querySelector("#loginForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      status.textContent = "Signing in…";
+      const { error } = await supabase.auth.signInWithPassword({
+        email: document.querySelector("#email").value,
+        password: document.querySelector("#password").value
+      });
+      status.textContent = error ? error.message : "";
+      await refreshSession();
+    });
+
+    document.querySelector("#signOut").addEventListener("click", async () => {
+      await supabase.auth.signOut();
+      status.textContent = "";
+      await refreshSession();
+    });
+
+    document.querySelector("#uploadForm").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const button = document.querySelector("#uploadButton");
+      const file = document.querySelector("#file").files[0];
+
+      if (!file || !allowedTypes.has(file.type)) {
+        status.textContent = "Choose a JPG, PNG, WebP, MP4, or WebM file.";
+        return;
+      }
+      if (file.size > 100 * 1024 * 1024) {
+        status.textContent = "The maximum file size is 100 MB.";
+        return;
+      }
+
+      button.disabled = true;
+      status.textContent = "Uploading…";
+
+      try {
+        const { data: userData, error: userError } = await supabase.auth.getUser();
+        if (userError || !userData.user) throw new Error("Please sign in again.");
+
+        const extension = file.name.split(".").pop().toLowerCase();
+        const path = `${userData.user.id}/${crypto.randomUUID()}.${extension}`;
+        const { error: uploadError } = await supabase.storage
+          .from("portfolio-media")
+          .upload(path, file, { contentType: file.type, upsert: false });
+        if (uploadError) throw uploadError;
+
+        const kind = file.type.startsWith("video/") ? "video" : "photo";
+        const { error: rowError } = await supabase.from("media").insert({
+          title: document.querySelector("#title").value.trim(),
+          description: document.querySelector("#description").value.trim(),
+          kind,
+          category: document.querySelector("#category").value,
+          school: document.querySelector("#school").value.trim(),
+          event_day: document.querySelector("#eventDay").value,
+          storage_path: path
+        });
+        if (rowError) {
+          await supabase.storage.from("portfolio-media").remove([path]);
+          throw rowError;
+        }
+
+        status.textContent = "Uploaded successfully. It will appear in the portfolio gallery.";
+        document.querySelector("#uploadForm").reset();
+      } catch (error) {
+        status.textContent = error.message || "Upload failed. Please try again.";
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    await refreshSession();
+  </script>
+</body>
+</html>
